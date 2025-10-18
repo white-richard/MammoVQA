@@ -1,4 +1,6 @@
-# MammoVQA: A Benchmark for Breast Cancer Screening and Diagnosis in Mammogram Visual Question Answering
+# A Benchmark for Breast Cancer Screening and Diagnosis in Mammogram Visual Question Answering
+
+[![DOI](https://zenodo.org/badge/930210527.svg)](https://doi.org/10.5281/zenodo.17384739)
 
 ## Clone repository
 ```shell
