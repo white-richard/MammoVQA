@@ -25,7 +25,7 @@ def combine_scores(similarities):
     
     new_similarities = [(key, value) for key, value in new_similarities.items()]
     return new_similarities
-# 提取最佳选项的函数
+
 def extract_best_option(prediction, qas_question,question_type,target):
     shuffled_options = [
         part.strip() for part in qas_question.split("### Options:")[1].split(". ### Answer:")[0].split(",")
@@ -35,20 +35,20 @@ def extract_best_option(prediction, qas_question,question_type,target):
     formatted_options = labels + shuffled_options + options
 
     if question_type!='multiple choice':
-        # 计算相似度
+
         similarities = []
         for option in formatted_options:
             similarity = difflib.SequenceMatcher(None, prediction.lower(), option.lower()).ratio()
             similarities.append((option, similarity))
 
-        # 按相似度排序
+
         similarities.sort(key=lambda x: x[1], reverse=True)
         # print(similarities)
-        # 找出并列第一的选项
+     
         max_score = similarities[0][1]
         top_options = [option for option, score in similarities if score == max_score]
 
-        # 比较并列第一的选项
+     
         top_options = [uni_option(top_option, shuffled_options) for top_option in top_options]
         if len(top_options) > 1:
             same_option = len(set(top_options)) == 1
@@ -65,18 +65,18 @@ def extract_best_option(prediction, qas_question,question_type,target):
                         best_option = top_options[0]
                     else:
                         similarities = process.extract(prediction, formatted_options, limit=50)
-                        # 找出并列第一的选项
+              
                         max_score = similarities[0][1]
                         top_options = [option for option, score in similarities if score == max_score]
 
-                        # 比较并列第一的选项
+                  
                         top_options=[uni_option(top_option,shuffled_options) for top_option in top_options]
                         
                         if len(top_options) > 1:
-                            # 检查是否所有并列第一的选项都相同
+                      
                             same_option = len(set(top_options))==1
                             if same_option:
-                                # 选择 top_options 中的第一个选项
+                           
                                 best_option = top_options[0]
                             else:
                      
@@ -115,7 +115,7 @@ def extract_best_option(prediction, qas_question,question_type,target):
         selected_options=set([uni_option(selected_option,shuffled_options) for selected_option in selected_options])
         
         target=set([uni_option(_,shuffled_options) for _ in target])
-        # 比较 final_options 和 label
+
         if selected_options == target:
             selected_options={item.split(': ', 1)[1] for item in selected_options}
             return 1.0,selected_options
@@ -200,7 +200,7 @@ def calculate_qas(eval_data, test_data, question_topic_info):
                 gt_abnormality_labels_by_dataset[dataset].append(gt_vec)
 
                 # Pred multi-hot
-                # if isinstance(pred_label, list):  # extract_best_option 给出的预测可能是 list
+                # if isinstance(pred_label, list): 
                 #     pred_ans = pred_label
                 # else:
                 #     pred_ans = [pred_label] if pred_label in cat_to_idx else []
@@ -275,27 +275,11 @@ def calculate_qas(eval_data, test_data, question_topic_info):
         simple_accuracy_by_dataset[dataset] = simple_accuracy
         confidence_intervals_by_dataset[dataset] = calculate_confidence_interval(scores)
         
-    # f1_by_topic = {}
-    # for topic in pred_labels_by_topic:
-    #     f1_by_topic[topic] = f1_score(gt_labels_by_topic[topic], pred_labels_by_topic[topic], average="macro")
-    #     # gt_array = np.stack(gt_labels_by_topic[topic])
-    #     # pred_array = np.stack(pred_labels_by_topic[topic])
-    #     # f1_by_topic[topic] = f1_score(gt_array, pred_array, average="macro", zero_division=0)
-
-    # f1_by_dataset = {}
-    # for dataset in gt_labels_by_dataset:
-    #     f1_by_dataset[dataset] = f1_score(gt_labels_by_dataset[dataset], pred_labels_by_dataset[dataset], average="macro")
-    # for dataset in gt_abnormality_labels_by_dataset:
-    #     f1_by_dataset[dataset] = f1_score(gt_abnormality_labels_by_dataset[dataset], pred_abnormality_labels_by_dataset[dataset], average="macro",zero_division=0)
-
-    # return (weighted_accuracy_by_topic, simple_accuracy_by_topic, confidence_intervals_by_topic, 
-    #         simple_accuracy_by_dataset, confidence_intervals_by_dataset,
-    #         f1_by_topic, f1_by_dataset)# ⭐ 新增返回 F1
     f1_by_topic = {}
     for topic in pred_labels_by_topic:
         gt = np.array(gt_labels_by_topic[topic])
         pred = np.array(pred_labels_by_topic[topic])
-        valid_idx = pred != -1  # 过滤非法预测
+        valid_idx = pred != -1 
         if np.any(valid_idx):
             f1_by_topic[topic] = f1_score(gt[valid_idx], pred[valid_idx], average="macro", zero_division=0)
         else:
@@ -307,7 +291,7 @@ def calculate_qas(eval_data, test_data, question_topic_info):
         scores = []
         counts = []
 
-        # 单选题
+   
         if dataset in gt_labels_by_dataset:
             y_true = np.array(gt_labels_by_dataset[dataset])
             y_pred = np.array(pred_labels_by_dataset[dataset])
@@ -318,7 +302,7 @@ def calculate_qas(eval_data, test_data, question_topic_info):
                 scores.append(f1_score(y_true, y_pred, average="macro", zero_division=0))
                 counts.append(len(y_true))
 
-        # 多选题 (Abnormality)
+     
         if dataset in gt_abnormality_labels_by_dataset:
             y_true = np.array(gt_abnormality_labels_by_dataset[dataset])
             y_pred = np.array(pred_abnormality_labels_by_dataset[dataset])
@@ -326,7 +310,7 @@ def calculate_qas(eval_data, test_data, question_topic_info):
                 scores.append(f1_score(y_true, y_pred, average="macro", zero_division=0))
                 counts.append(len(y_true))
 
-        # 按样本数加权平均
+    
         if counts:
             f1_by_dataset[dataset] = np.average(scores, weights=counts)
         else:
@@ -334,7 +318,7 @@ def calculate_qas(eval_data, test_data, question_topic_info):
 
     return (weighted_accuracy_by_topic, simple_accuracy_by_topic, confidence_intervals_by_topic, 
             simple_accuracy_by_dataset, confidence_intervals_by_dataset,
-            f1_by_topic, f1_by_dataset)  # ⭐返回合并后的 dataset F1
+            f1_by_topic, f1_by_dataset) 
 
 # Modify the calculate_pathology_qas function to include CI and p-value calculations
 def calculate_pathology_qas(eval_data, test_data, question_topic_info):
@@ -460,7 +444,7 @@ def calculate_abnormality_qas(eval_data, test_data, question_topic):
     finding_counter = Counter()
     non_finding_counter = Counter()
 
-    # 所有类别
+
     all_categories = ["Normal", "Calcification", "Mass", "Architectural distortion", 
                       "Asymmetry", "Miscellaneous", "Nipple retraction", 
                       "Suspicious lymph node", "Skin thickening", "Skin retraction"]
@@ -472,7 +456,7 @@ def calculate_abnormality_qas(eval_data, test_data, question_topic):
     gt_labels_non_finding = []
     pred_labels_non_finding = []
 
-    # Step 1: 统计类别频次
+
     for idx, test_sample in test_data.items():
         if idx in eval_data:
             eval_sample = eval_data[idx]
@@ -484,7 +468,7 @@ def calculate_abnormality_qas(eval_data, test_data, question_topic):
                 else:
                     non_finding_counter[answer_group] += 1
 
-    # Step 2: finding 部分
+
     finding_categories = list(finding_counter.keys())
     finding_class_counts = np.array([finding_counter.get(category, 0) for category in finding_categories])
 
@@ -504,13 +488,13 @@ def calculate_abnormality_qas(eval_data, test_data, question_topic):
                 finding_targets.append(finding_categories.index(gt_answers))
                 finding_n += 1
 
-                # 转 multi-hot 向量 (GT & Pred)
+          
                 gt_vec = [0]*len(all_categories)
                 for ans in eval_sample["Answer"]:
                     gt_vec[cat_to_idx[ans]] = 1
                 gt_labels_finding.append(gt_vec)
 
-                # if isinstance(qas_score, tuple):  # (score, prediction) 格式
+                # if isinstance(qas_score, tuple): 
                 #     pred_ans = qas_score[1] if isinstance(qas_score[1], list) else [qas_score[1]]
                 # else:
                 #     pred_ans = eval_sample["Answer"] if qas_score == 1.0 else []
@@ -535,7 +519,6 @@ def calculate_abnormality_qas(eval_data, test_data, question_topic):
         finding_confidence_interval = calculate_confidence_interval(finding_scores)
         f1_finding = f1_score(gt_labels_finding, pred_labels_finding, average="macro", zero_division=0)
 
-    # Step 3: non-finding 部分
     non_finding_categories = list(non_finding_counter.keys())
     non_finding_class_counts = np.array([non_finding_counter.get(category, 0) for category in non_finding_categories])
 
@@ -601,24 +584,24 @@ def format_qas_cs_output(eval_data, test_data, question_topic_info):
         "Bi-Rads", "ACR", "View", "Laterality"
     ]
 
-    # 计算常规问题主题的 QAS
+ 
     (weighted_acc_by_topic, simple_acc_by_topic, confidence_intervals_by_topic, 
      simple_acc_by_dataset, confidence_intervals_by_dataset,
             f1_by_topic, f1_by_dataset) = calculate_qas(eval_data, test_data, question_topic_info)
 
-    print("\nF1 by Dataset (百分比形式):")
+    print("\nF1 by Dataset:")
     for dataset, value in f1_by_dataset.items():
         print(dataset)
     for dataset in dataset_order:
         print(f"Dataset {dataset}: F1 = {f1_by_dataset[dataset]*100:.2f}%")
 
-    # ---- 输出 Question Topic F1 ----
-    print("\nF1 by Question Topic (百分比形式):")
+
+    print("\nF1 by Question Topic:")
     for topic in question_topic_order:
         print(f"Question Topic {topic}: F1 = {f1_by_topic[topic]*100:.2f}%")
     
-    # 输出常规问题主题的结果
-    print("\nSimple Accuracy by Dataset (百分比形式):")
+
+    print("\nSimple Accuracy by Dataset:")
     for dataset in dataset_order:
         if dataset in simple_acc_by_dataset:
             acc_score = simple_acc_by_dataset[dataset] * 100
@@ -627,7 +610,7 @@ def format_qas_cs_output(eval_data, test_data, question_topic_info):
         else:
             print(f"Dataset {dataset}: Simple Accuracy = N/A")
 
-    print("\nWeighted Accuracy by Question Topic (百分比形式):")
+    print("\nWeighted Accuracy by Question Topic:")
     for topic in question_topic_order:
         if topic in weighted_acc_by_topic:
             acc_score = weighted_acc_by_topic[topic] * 100
@@ -636,7 +619,7 @@ def format_qas_cs_output(eval_data, test_data, question_topic_info):
         else:
             print(f"Question Topic {topic}: Weighted Accuracy = N/A")
 
-    print("\nSimple Accuracy by Question Topic (百分比形式):")
+    print("\nSimple Accuracy by Question Topic:")
     for topic in question_topic_order:
         if topic in simple_acc_by_topic:
             acc_score = simple_acc_by_topic[topic] * 100
@@ -645,44 +628,44 @@ def format_qas_cs_output(eval_data, test_data, question_topic_info):
         else:
             print(f"Question Topic {topic}: Simple Accuracy = N/A")
 
-    # 计算 Pathology 问题主题的 QAS
+
     ((pathology_weighted_finding, pathology_simple_finding, pathology_ci_finding,f1_by_finding), 
      (pathology_weighted_non_finding, pathology_simple_non_finding, pathology_ci_non_finding,f1_by_non_finding)) = calculate_pathology_qas(eval_data, test_data, question_topic_info)
     
-    print("\nF1 by Dataset (百分比形式):")
+    print("\nF1 by Dataset:")
     for topic, f1 in f1_by_non_finding.items():
         print(f"Pathology (breast): F1 = {f1*100:.2f}%")
 
-    # ---- 输出 Question Topic F1 ----
-    print("\nF1 by Question Topic (百分比形式):")
+
+    print("\nF1 by Question Topic:")
     for topic, f1 in f1_by_finding.items():
         print(f"Pathology (finding): F1 = {f1*100:.2f}%")
         
-    print("\nPathology QAS by Breast (百分比形式):")
+    print("\nPathology QAS by Breast:")
     for topic in pathology_weighted_non_finding:
         weighted_acc = pathology_weighted_non_finding[topic] * 100
         simple_acc = pathology_simple_non_finding[topic] * 100
         ci_low, ci_high = pathology_ci_non_finding[topic]
         print(f"Pathology (breast): Weighted Accuracy = {weighted_acc:.2f}%, Simple Accuracy = {simple_acc:.2f}%, CI = ({ci_low:.2f}%, {ci_high:.2f}%)")
         
-    print("\nPathology QAS by Finding (百分比形式):")
+    print("\nPathology QAS by Finding:")
     for topic in pathology_weighted_finding:
         weighted_acc = pathology_weighted_finding[topic] * 100
         simple_acc = pathology_simple_finding[topic] * 100
         ci_low, ci_high = pathology_ci_finding[topic]
         print(f"Pathology (finding): Weighted Accuracy = {weighted_acc:.2f}%, Simple Accuracy = {simple_acc:.2f}%, CI = ({ci_low:.2f}%, {ci_high:.2f}%)")
 
-    # 计算 Abnormality 问题主题的 QAS
+
     ((abnormality_weighted_finding, abnormality_simple_finding, abnormality_ci_finding, f1_finding), 
      (abnormality_weighted_non_finding, abnormality_simple_non_finding, abnormality_ci_non_finding, f1_non_finding)) = calculate_abnormality_qas(eval_data, test_data, "Abnormality")
     
     print(f"\nAbnormality (breast): F1 = {f1_non_finding*100:.2f}%")
     print(f"\nAbnormality (finding): F1 = {f1_finding*100:.2f}%")
     
-    print("\nAbnormality QAS by Breast (百分比形式):")
+    print("\nAbnormality QAS by Breast:")
     print(f"Abnormality (breast): Weighted Accuracy = {abnormality_weighted_non_finding * 100:.2f}%, Simple Accuracy = {abnormality_simple_non_finding * 100:.2f}%, CI = ({abnormality_ci_non_finding[0]:.2f}%, {abnormality_ci_non_finding[1]:.2f}%)")
     
-    print("\nAbnormality QAS by Finding (百分比形式):")
+    print("\nAbnormality QAS by Finding:")
     print(f"Abnormality (finding): Weighted Accuracy = {abnormality_weighted_finding * 100:.2f}%, Simple Accuracy = {abnormality_simple_finding * 100:.2f}%, CI = ({abnormality_ci_finding[0]:.2f}%, {abnormality_ci_finding[1]:.2f}%)")
 
 # Example Usage
