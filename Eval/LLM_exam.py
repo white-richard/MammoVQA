@@ -107,46 +107,34 @@ def extract_best_option(prediction, qas_question, question_type, target):
             return 0.0,None
 
 def calculate_confidence_interval(scores, confidence_level=0.95):
-    """
-    计算置信区间，并返回保留两位小数的百分数
-    :param scores: 样本级别的准确率列表
-    :param confidence_level: 置信水平（默认 0.95）
-    :return: 置信区间的上下界（保留两位小数的百分数）
-    """
-    if len(scores) == 0:  # 如果 scores 是空列表
+
+    if len(scores) == 0: 
         return (0.0, 0.0)
     
-    # 计算置信区间
+
     res = bootstrap((np.array(scores),), np.mean, confidence_level=confidence_level)
     ci_low = res.confidence_interval.low
     ci_high = res.confidence_interval.high
 
-    # 转换为百分数并保留两位小数
     ci_low_percent = round(ci_low * 100, 2)
     ci_high_percent = round(ci_high * 100, 2)
 
     return (ci_low_percent, ci_high_percent)
 
 def calculate_p_value(scores1, scores2):
-    """
-    计算两个模型的样本级别预测结果的 p-value
-    :param scores1: 模型 1 的样本级别预测结果列表
-    :param scores2: 模型 2 的样本级别预测结果列表
-    :return: p-value
-    """
-    if len(scores1) == 0 or len(scores2) == 0:  # 如果任一列表为空
+
+    if len(scores1) == 0 or len(scores2) == 0: 
         return 1.0
-    if len(scores1) != len(scores2):  # 如果长度不一致
+    if len(scores1) != len(scores2): 
         return 1.0
     t_stat, p_value = ttest_rel(scores1, scores2)
     return p_value
 
 def calculate_qas(eval_data, test_data, question_topic_info):
-    # 初始化数据结构
     scores_by_topic = defaultdict(list)
     target_by_topic = defaultdict(list)
-    class_counts_by_topic = defaultdict(lambda: defaultdict(int))  # 记录每个类别的样本数
-    unique_categories = defaultdict(dict)  # 每个 question topic 的类别映射
+    class_counts_by_topic = defaultdict(lambda: defaultdict(int)) 
+    unique_categories = defaultdict(dict) 
 
     scores_by_dataset = defaultdict(list)
     
@@ -156,32 +144,30 @@ def calculate_qas(eval_data, test_data, question_topic_info):
     pred_labels_by_dataset = defaultdict(list)
     gt_labels_by_dataset = defaultdict(list)
 
-    # 遍历每个 Question topic 的所有可能类别，并初始化 unique_categories
     for topic, info in question_topic_info.items():
-        categories = info[1]  # 忽略 question type，直接获取类别列表
+        categories = info[1] 
         for idx, category in enumerate(categories):
-            unique_categories[topic][category] = idx  # 为每个类别分配唯一编号
+            unique_categories[topic][category] = idx  
         unique_categories[topic]["Make no choice"] = len(categories)
 
-    # 遍历 test_data，查找对应的 eval_data 中的 Question topic 和类别
+
     for idx, test_sample in test_data.items():
         if idx in eval_data:
             eval_sample = eval_data[idx]
             question_topic = eval_sample['Question topic']
             question_type = eval_sample['Question type']
-            category = eval_sample['Answer']  # 类别是 eval_data 中的 'Answer'
-            dataset = eval_sample['Dataset']  # 获取 Dataset 信息
+            category = eval_sample['Answer'] 
+            dataset = eval_sample['Dataset'] 
 
-            # 如果 category 是列表（例如 multiple choice 类型），将其转换为不可变的类型
             if isinstance(category, list):
-                category = tuple(category)  # 转换为元组
+                category = tuple(category) 
 
-            # 获取对应的 qas_score
+     
             prediction = test_sample['qas_answer']
             question = test_sample['qas_question']
             qas_score,pred_label = extract_best_option(prediction, question, question_type, category)
 
-            # 记录 score 和 target 按照 question_topic 和 dataset 分组
+ 
             scores_by_topic[question_topic].append(qas_score)
             scores_by_dataset[dataset].append(qas_score)
 
@@ -196,23 +182,21 @@ def calculate_qas(eval_data, test_data, question_topic_info):
                 gt_labels_by_dataset[dataset].append(unique_categories[question_topic][category])
                 pred_labels_by_dataset[dataset].append(unique_categories[question_topic].get(pred_label, -1))
 
-            # 记录每个类别的样本数
+      
             class_counts_by_topic[question_topic][category] += 1
         else:
-            # 如果 eval_data 中没有对应的条目，默认 qas_score 为 0.0
+
             scores_by_topic[question_topic].append(0.0)
             scores_by_dataset[dataset].append(0.0)
 
             if question_topic == "Abnormality":
                 continue
-            target_by_topic[question_topic].append(-1)  # 表示无效数据
+            target_by_topic[question_topic].append(-1) 
 
-    # 计算每个 question_topic 对应的 weighted_accuracy 和 simple_accuracy
     weighted_accuracy_by_topic = {}
     simple_accuracy_by_topic = {}
     confidence_intervals_by_topic = {}
     for question_topic, scores in scores_by_topic.items():
-        # 如果是 "Abnormality"，使用简单的准确率计算
         if question_topic == "Abnormality":
             total_score = np.sum(scores)
             total_count = len(scores)
@@ -222,44 +206,35 @@ def calculate_qas(eval_data, test_data, question_topic_info):
             confidence_intervals_by_topic[question_topic] = calculate_confidence_interval(scores)
             continue
 
-        # 获取对应的 target 列表
         target = np.array(target_by_topic[question_topic])
 
-        # 过滤掉无效数据
         valid_indices = target != -1
         scores = np.array(scores)[valid_indices]
         target = target[valid_indices]
 
-        # 获取该 Question topic 所有的可能类别
         categories = question_topic_info[question_topic][1]
 
-        # 计算每个类别的样本数，确保包括样本数为 0 的类别
+
         class_counts = np.array([class_counts_by_topic[question_topic].get(category, 0) 
                                  for category in categories])
 
-        # 为每个样本计算权重，权重为该类别样本数的倒数，n / 类别的样本数
         n = len(scores)
         if n == 0 or np.sum(class_counts) == 0:
-            weighted_accuracy_by_topic[question_topic] = 0.0  # 如果没有有效数据，设为 0.0
+            weighted_accuracy_by_topic[question_topic] = 0.0 
             simple_accuracy_by_topic[question_topic] = 0.0
             confidence_intervals_by_topic[question_topic] = (0.0, 0.0)
             continue
 
-        # 通过类别的编号获取类别的样本数
         weights = n / class_counts[target]
 
-        # 计算加权准确率
         weighted_accuracy = np.sum(weights * scores) / np.sum(weights)
-        
-        # 计算简单准确率
+
         simple_accuracy = np.mean(scores)
 
-        # 将结果存储到 dict 中
         weighted_accuracy_by_topic[question_topic] = weighted_accuracy
         simple_accuracy_by_topic[question_topic] = simple_accuracy
         confidence_intervals_by_topic[question_topic] = calculate_confidence_interval(scores)
 
-    # 计算每个 dataset 对应的简单准确率和置信区间
     simple_accuracy_by_dataset = {}
     confidence_intervals_by_dataset = {}
     for dataset, scores in scores_by_dataset.items():
@@ -279,54 +254,46 @@ def calculate_qas(eval_data, test_data, question_topic_info):
 
     return (weighted_accuracy_by_topic, simple_accuracy_by_topic, simple_accuracy_by_dataset, 
             confidence_intervals_by_topic, confidence_intervals_by_dataset,
-            f1_by_topic, f1_by_dataset)  # ⭐ 新增返回 F1
+            f1_by_topic, f1_by_dataset) 
     
 def format_qas_cs_output(eval_data, test_data, question_topic_info):
     (weighted_accuracy_by_topic, simple_accuracy_by_topic, simple_accuracy_by_dataset, 
      confidence_intervals_by_topic, confidence_intervals_by_dataset,
      f1_by_topic, f1_by_dataset) = calculate_qas(eval_data, test_data, question_topic_info)
 
-    # ---- 输出 Dataset F1 ----
-    print("\nF1 by Dataset (百分比形式):")
+    print("\nF1 by Dataset:")
     for dataset, f1 in f1_by_dataset.items():
         print(f"Dataset {dataset}: F1 = {f1*100:.2f}%")
 
-    # ---- 输出 Question Topic F1 ----
-    print("\nF1 by Question Topic (百分比形式):")
+    print("\nF1 by Question Topic:")
     for topic, f1 in f1_by_topic.items():
         print(f"Question Topic {topic}: F1 = {f1*100:.2f}%")
 
-    # 输出对于每个 dataset 的 qas/cs 和置信区间
-    print("\nQAS/CS by Dataset (百分比形式):")
+    print("\nQAS/CS by Dataset:")
     for dataset in simple_accuracy_by_dataset:
-        qas_score = simple_accuracy_by_dataset[dataset] * 100  # 转换为百分比
+        qas_score = simple_accuracy_by_dataset[dataset] * 100 
         ci_low, ci_high = confidence_intervals_by_dataset.get(dataset, (0.0, 0.0))
         print(f"Dataset {dataset}: Simple Accuracy = {qas_score:.2f}%, CI = ({ci_low:.2f}%, {ci_high:.2f}%)")
 
-    # 输出对于每个 question topic 的 qas/cs 和置信区间
-    print("\nQAS/CS by Question Topic (百分比形式):")
+    print("\nQAS/CS by Question Topic:")
     for topic in simple_accuracy_by_topic:
-        qas_score = simple_accuracy_by_topic[topic] * 100  # 转换为百分比
+        qas_score = simple_accuracy_by_topic[topic] * 100 
         ci_low, ci_high = confidence_intervals_by_topic.get(topic, (0.0, 0.0))
         print(f"Question Topic {topic}: Simple Accuracy = {qas_score:.2f}%, CI = ({ci_low:.2f}%, {ci_high:.2f}%)")
 
-    # 输出加权准确率
-    print("\nWeighted Accuracy by Question Topic (百分比形式):")
+    print("\nWeighted Accuracy by Question Topic:")
     for topic in weighted_accuracy_by_topic:
-        qas_score = weighted_accuracy_by_topic[topic] * 100  # 转换为百分比
+        qas_score = weighted_accuracy_by_topic[topic] * 100  
         ci_low, ci_high = confidence_intervals_by_topic.get(topic, (0.0, 0.0))
         print(f"Question Topic {topic}: Weighted Accuracy = {qas_score:.2f}%")
 
-    # 计算 p-value
+
     p_values_by_topic = {}
     for topic in weighted_accuracy_by_topic:
-        # 获取当前模型的样本级别预测结果
         current_scores = [extract_best_option(test_data[idx]['qas_answer'], test_data[idx]['qas_question'], 
                                              eval_data[idx]['Question type'], eval_data[idx]['Answer'])[0]
                           for idx in test_data if idx in eval_data and eval_data[idx]['Question topic'] == topic]
         
-        # 获取另一个模型的样本级别预测结果（假设另一个模型的结果存储在另一个文件中）
-        # 这里假设另一个模型的结果存储在 `llava_data` 中
         with open('/home/jiayi/MammoVQA/Result/LLAVA-Mammo-exam.json', 'r') as f:
             llava_data = json.load(f)
         
@@ -336,14 +303,12 @@ def format_qas_cs_output(eval_data, test_data, question_topic_info):
         
         p_values_by_topic[topic] = calculate_p_value(current_scores, llava_scores)
 
-    # 输出 p-value
     print("\nP-values by Question Topic:")
     for topic in p_values_by_topic:
         p_value = p_values_by_topic[topic]
         print(f"Question Topic {topic}: p-value = {p_value:.4f}")
 
 if __name__ == "__main__":
-    # 加载 JSON 文件
     with open('/home/jiayi/MammoVQA/Benchmark/MammoVQA-Exam-Bench.json', 'r') as f:
         eval_data = json.load(f)
     method='InternVL3-8B-Exam'
@@ -354,6 +319,4 @@ if __name__ == "__main__":
         "ACR": ["single choice", ["Level A", "Level B", "Level C", "Level D"]],
         "Bi-Rads": ["single choice", ["Bi-Rads 0", "Bi-Rads 1", "Bi-Rads 2", "Bi-Rads 3", "Bi-Rads 4", "Bi-Rads 5"]]
     }
-
-    # 格式化输出 qas/cs 结果
     format_qas_cs_output(eval_data, test_data, question_topic_info)
