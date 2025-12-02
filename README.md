@@ -1,4 +1,4 @@
-# A Benchmark for Breast Cancer Screening and Diagnosis in Mammogram Visual Question Answering
+# [A Benchmark for Breast Cancer Screening and Diagnosis in Mammogram Visual Question Answering](https://www.nature.com/articles/s41467-025-66507-z)
 
 [![DOI](https://zenodo.org/badge/930210527.svg)](https://doi.org/10.5281/zenodo.17384739)
 
@@ -71,3 +71,14 @@ Feel free to modify it as you want.
 - S1. Download [Model checkpoint](https://drive.google.com/file/d/1uFCrOTbsvug8YZoHKR7wlvoTSwzB32EY/view?usp=sharing) of LLaVA-Mammo, and unzip it to `Quick_demo` path.
 - S2. `python /MammoVQA/Quick_demo/main.py` to inference, you can get the result file in `/MammoVQA/Result/LLaVA-Mammo.json`.
 - S3. `python /MammoVQA/Eval/Output_score_combine.py` to calculate metrics.
+
+## Citation
+```
+@article{zhu2025benchmark,
+  title={A Benchmark for Breast Cancer Screening and Diagnosis in Mammogram Visual Question Answering},
+  author={Zhu, Jiayi and Huang, Fuxiang and Luo, Qiong and Chen, Hao},
+  journal={Nature Communications},
+  year={2025},
+  publisher={Nature Publishing Group UK London}
+}
+```
