@@ -5,7 +5,7 @@
 ## Clone repository
 ```shell
 git clone https://github.com/PiggyJerry/MammoVQA.git
-
+cd MammoVQA
 conda create -n mammovqa python==3.9
 conda activate mammovqa
 
