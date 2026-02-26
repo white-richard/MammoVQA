@@ -672,7 +672,7 @@ def format_qas_cs_output(eval_data, test_data, question_topic_info):
 if __name__ == "__main__":
     with open('/home/jiayi/MammoVQA/Benchmark/MammoVQA-Image-Bench.json', 'r') as f:
         eval_data = json.load(f)
-    method='MedGemma-4B'
+    method='LLaVA-Mammo'
     with open(f'/home/jiayi/MammoVQA/Result/{method}.json', 'r') as f:
         test_data = json.load(f)
     print(f'-------{method}--------')
