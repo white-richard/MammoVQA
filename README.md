@@ -68,7 +68,7 @@ Feel free to modify it as you want.
 
 - S1. Download [Model checkpoint](https://drive.google.com/file/d/1uFCrOTbsvug8YZoHKR7wlvoTSwzB32EY/view?usp=sharing) of LLaVA-Mammo, and unzip it to `Quick_demo` path.
 - S2. `python /MammoVQA/Quick_demo/main.py` to inference, you can get the result file in `/MammoVQA/Result/LLaVA-Mammo.json`.
-- S3. `python /MammoVQA/Eval/Output_score_combine.py` to calculate metrics.
+- S3. `python /MammoVQA/Eval/LLM.py` to calculate metrics.
 
 ## Citation
 ```
