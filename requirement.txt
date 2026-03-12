@@ -5,8 +5,9 @@ pandas==2.2.2
 pillow==10.4.0
 pydicom==2.4.4
 scipy==1.13.1
-torch==2.5.1+cu121
-torchaudio==2.5.1+cu121
-torchvision==0.20.1+cu121
+torch
+torchaudio
+torchvision
 tqdm==4.66.4
 transformers==4.46.1
+python-lsp-server
