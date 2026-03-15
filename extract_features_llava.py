@@ -34,8 +34,8 @@ Features are saved as a .pt file containing:
         "dataset":     str,
         "arch":        str,
         "split":       str,
-        "label_col":   "abnormal" | "birads_ge4",
-        "label_mode":  "abnormality" | "birads",
+        "label_col":   "abnormal" | "birads_ge4" | "cancer",
+        "label_mode":  "abnormality" | "birads" | "cancer",
     }
 
 Usage
@@ -69,6 +69,19 @@ python extract_features_llava.py \
   --output-file "features/vindr_llava_features_birads.pt" \
   --batch-size 1 \
   --num-workers 0
+  
+# RSNA:
+python extract_features_llava.py \
+    --data-dir "$HOME/.code/datasets/rsna/mammo_clip" \
+    --img-dir "train_images_png" \
+    --csv-file "train_folds.csv" \
+    --json-dir "$HOME/.code/mammovqa/Benchmark/MammoVQA_JSON" \
+    --model-dir "$HOME/.code/model_weights/Llava-MammoVQA/llava-1.6-vicuna-7b_lora-True_qlora-False" \
+    --split "all" \
+    --dataset RSNA \
+    --label-mode cancer \
+    --output-file "features/rsna_llavaVQA_cancer_features.pt" \
+    --batch-size 1
 """
 
 import argparse
@@ -150,6 +163,17 @@ def build_birads_prompt(entry: dict) -> str:
     random.shuffle(options)
     formatted = ", ".join(f"{chr(65 + i)}: {opt}" for i, opt in enumerate(options))
     return _SINGLE_CHOICE_PREFIX.format(Question=entry["Question"], Options=formatted)
+
+
+_CANCER_QUESTION = "What abnormalities, if any, are present in this mammogram?"
+
+
+def build_cancer_prompt() -> str:
+    """Build a shuffled multiple-choice abnormality prompt for cancer screening (RSNA)."""
+    options = list(_ABNORMALITY_OPTIONS)
+    random.shuffle(options)
+    formatted = ", ".join(f"{chr(65 + i)}: {opt}" for i, opt in enumerate(options))
+    return _MULTI_CHOICE_PREFIX.format(Question=_CANCER_QUESTION, Options=formatted)
 
 
 def birads_answer_to_binary(answer) -> int:
@@ -335,6 +359,72 @@ class LLaVAMammoDataset(Dataset):
         return img_path, prompt, label, entry
 
 
+def load_rsna_dataframe(data_dir: Path, csv_file: str, split: str) -> pd.DataFrame:
+    """
+    Load and filter the RSNA CSV for a given split.
+
+    split: "all" | "train" | "test"
+        RSNA uses a numeric fold column: fold 0 = validation/test, 1/2 = training.
+    """
+    df = pd.read_csv(data_dir / csv_file).fillna(0)
+    print(f"Full RSNA dataframe shape: {df.shape}")
+    print(f"Columns: {list(df.columns)}")
+
+    if split == "all":
+        return df
+
+    fold_col = "fold"
+    if fold_col not in df.columns:
+        raise ValueError(f"Expected column '{fold_col}' not found in RSNA CSV.")
+
+    if split == "train":
+        df = df[df[fold_col].isin([1, 2])].reset_index(drop=True)
+    elif split == "test":
+        df = df[df[fold_col] == 0].reset_index(drop=True)
+    else:
+        raise ValueError(f"RSNA split must be 'all', 'train', or 'test', got '{split}'")
+
+    print(f"Filtered RSNA dataframe shape ({split}): {df.shape}")
+    return df
+
+
+class RSNALLaVADataset(Dataset):
+    """
+    Dataset for RSNA mammography feature extraction via LLaVA-Mammo.
+
+    Reads directly from the RSNA CSV (no MammoVQA JSON required).
+    Image paths are resolved as: <data_dir>/<img_dir>/<patient_id>/<image_id>.png
+    Labels come from the CSV 'cancer' column (binary 0/1).
+    """
+
+    def __init__(self, df: pd.DataFrame, data_dir: Path, img_dir: str):
+        self.samples = []
+        skipped = 0
+
+        for _, row in df.iterrows():
+            patient_id = str(row["patient_id"])
+            image_id = str(row["image_id"])
+            if not image_id.endswith(".png"):
+                image_id = image_id + ".png"
+            img_path = data_dir / img_dir / patient_id / image_id
+            if not img_path.exists():
+                skipped += 1
+                continue
+            label = int(row.get("cancer", 0))
+            self.samples.append((str(img_path), label, row.to_dict()))
+
+        if skipped:
+            print(f"[warning] Skipped {skipped} entries (image not found on disk)")
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+        img_path, label, row_dict = self.samples[idx]
+        prompt = build_cancer_prompt()
+        return img_path, prompt, label, row_dict
+
+
 def _collate_fn(batch):
     img_paths = [b[0] for b in batch]
     prompts = [b[1] for b in batch]
@@ -397,15 +487,16 @@ def extract_llava_features(
     loader: DataLoader,
     device: torch.device,
     layer_idx: int = -1,
+    debug_mode: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor, list[str], pd.DataFrame]:
     all_features: list[torch.Tensor] = []
     all_labels: list[int] = []
     all_paths: list[str] = []
     all_meta: dict[str, list] = {}
 
-    for img_paths, prompts, labels, entries in tqdm(
+    for i, (img_paths, prompts, labels, entries) in enumerate(tqdm(
         loader, desc="Extracting features", unit="batch"
-    ):
+    )):
         # batch_size=1 enforced; unpack first element
         img_path = img_paths[0]
         prompt = prompts[0]
@@ -441,6 +532,10 @@ def extract_llava_features(
         # Accumulate all JSON entry fields as metadata
         for k, v in entry.items():
             all_meta.setdefault(k, []).append(v)
+
+        if debug_mode and i >= 2:
+            print("[debug_mode] Stopping early after 3 batches.")
+            break
 
     metadata_df = pd.DataFrame(all_meta)
     return (
@@ -491,15 +586,19 @@ def config():
         "--split",
         default="all",
         type=str,
-        choices=["all", "train", "eval", "bench"],
-        help="Which MammoVQA split(s) to extract features for",
+        choices=["all", "train", "eval", "bench", "test"],
+        help=(
+            "Which split(s) to extract features for. "
+            "VinDr: 'train'/'eval'/'bench'/'all'. "
+            "RSNA: 'train' (folds 1-2), 'test' (fold 0), or 'all'."
+        ),
     )
     parser.add_argument(
         "--dataset",
         default="both",
         type=str,
-        choices=["VinDr-Mammo-breast", "VinDr-Mammo-finding", "both"],
-        help="Which VinDr-Mammo sub-dataset to include",
+        choices=["VinDr-Mammo-breast", "VinDr-Mammo-finding", "both", "RSNA"],
+        help="Dataset to extract features for. Use 'RSNA' to bypass MammoVQA JSON and read directly from the CSV.",
     )
     parser.add_argument(
         "--layer-idx",
@@ -523,7 +622,7 @@ def config():
         "--label-mode",
         default="abnormality",
         type=str,
-        choices=["abnormality", "birads"],
+        choices=["abnormality", "birads", "cancer"],
         help=(
             "How to assign binary labels. "
             "'abnormality': uses the Abnormality question; label=1 if any abnormality is present. "
@@ -539,12 +638,23 @@ def config():
         type=int,
         help="Cap the number of samples (useful for smoke-testing)",
     )
+    parser.add_argument(
+        "--debug-mode",
+        action="store_true",
+        help="Stop after 3 batches — useful for quick end-to-end testing",
+    )
     return parser.parse_args()
 
 
 def main():
     args = config()
     seed_all(args.seed)
+
+    if args.label_mode == "cancer" and args.dataset != "RSNA":
+        raise ValueError(
+            "--label-mode cancer is only valid with --dataset RSNA. "
+            "Did you forget to add --dataset RSNA?"
+        )
 
     if args.batch_size != 1:
         print("[warning] LLaVA requires variable-length processing; forcing batch-size=1")
@@ -555,34 +665,46 @@ def main():
     )
     print(f"Using device: {device}")
 
-    # ---- Resolve dataset list -------------------------------------------
-    if args.dataset == "both":
-        datasets = ["VinDr-Mammo-breast", "VinDr-Mammo-finding"]
+    # ---- Build dataset --------------------------------------------------
+    if args.dataset == "RSNA":
+        # RSNA: read directly from CSV, no MammoVQA JSON needed
+        df = load_rsna_dataframe(
+            data_dir=Path(args.data_dir),
+            csv_file=args.csv_file,
+            split=args.split,
+        )
+        dataset = RSNALLaVADataset(
+            df=df,
+            data_dir=Path(args.data_dir),
+            img_dir=args.img_dir,
+        )
     else:
-        datasets = [args.dataset]
+        # VinDr: load from MammoVQA JSON entries
+        if args.dataset == "both":
+            datasets = ["VinDr-Mammo-breast", "VinDr-Mammo-finding"]
+        else:
+            datasets = [args.dataset]
 
-    # ---- Load JSON entries -----------------------------------------------
-    question_topic = "Bi-Rads" if args.label_mode == "birads" else "Abnormality"
-    entries = load_json_entries(
-        json_dir=Path(args.json_dir),
-        split=args.split,
-        datasets=datasets,
-        question_topic=question_topic,
-    )
+        question_topic = "Bi-Rads" if args.label_mode == "birads" else "Abnormality"
+        entries = load_json_entries(
+            json_dir=Path(args.json_dir),
+            split=args.split,
+            datasets=datasets,
+            question_topic=question_topic,
+        )
 
-    # ---- Build CSV path index -------------------------------------------
-    csv_path = Path(args.data_dir) / args.csv_file
-    image_idx, series_idx = build_path_index(csv_path)
+        csv_path = Path(args.data_dir) / args.csv_file
+        image_idx, series_idx = build_path_index(csv_path)
 
-    # ---- Build dataset / dataloader -------------------------------------
-    dataset = LLaVAMammoDataset(
-        entries=entries,
-        image_idx=image_idx,
-        series_idx=series_idx,
-        data_dir=Path(args.data_dir),
-        img_dir=args.img_dir,
-        label_mode=args.label_mode,
-    )
+        dataset = LLaVAMammoDataset(
+            entries=entries,
+            image_idx=image_idx,
+            series_idx=series_idx,
+            data_dir=Path(args.data_dir),
+            img_dir=args.img_dir,
+            label_mode=args.label_mode,
+        )
+
     if args.limit is not None:
         dataset.samples = dataset.samples[: args.limit]
     print(f"Resolved samples: {len(dataset)}")
@@ -607,6 +729,7 @@ def main():
         loader=loader,
         device=device,
         layer_idx=args.layer_idx,
+        debug_mode=args.debug_mode,
     )
 
     print("\nExtraction complete.")
@@ -619,10 +742,15 @@ def main():
     output_path = Path(args.output_file)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    label_col = "birads_ge4" if args.label_mode == "birads" else "abnormal"
+    if args.label_mode == "birads":
+        label_col = "birads_ge4"
+    elif args.label_mode == "cancer":
+        label_col = "cancer"
+    else:
+        label_col = "abnormal"
     payload = {
         "features": features,  # (N, D) float32
-        "labels": labels,  # (N,)   int64
+        # "labels": labels,  # (N,)   int64
         "img_paths": img_paths,  # list[str]
         "metadata": metadata_df,  # pd.DataFrame, all JSON entry fields, length N
         "feature_dim": features.shape[1],
